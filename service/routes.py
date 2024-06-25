@@ -20,7 +20,7 @@ Product Store Service with UI
 """
 from flask import jsonify, request, abort
 from flask import url_for  # noqa: F401 pylint: disable=unused-import
-from service.models import Product
+from service.models import Product, Category
 from service.common import status  # HTTP Status Codes
 from . import app
 
@@ -86,43 +86,137 @@ def create_products():
 
     message = product.serialize()
 
-    #
-    # Uncomment this line of code once you implement READ A PRODUCT
-    #
-    # location_url = url_for("get_products", product_id=product.id, _external=True)
-    location_url = "/"  # delete once READ is implemented
+    location_url = url_for("get_products", product_id=product.id, _external=True)
     return jsonify(message), status.HTTP_201_CREATED, {"Location": location_url}
 
 
 ######################################################################
 # L I S T   A L L   P R O D U C T S
 ######################################################################
+@app.route("/products", methods=["GET"])
+def list_products():
+    """Returns a list of Products"""
+    app.logger.info("Request to list Products...")
 
-#
-# PLACE YOUR CODE TO LIST ALL PRODUCTS HERE
-#
+    # Initialize an empty list to hold the products.
+    products = []
+
+    # Get the `available` parameter from the request
+    available = request.args.get("available")
+    # Get the `category` parameter from the request
+    category = request.args.get("category")
+    # Get the `name` parameter from the request
+    name = request.args.get("name")
+
+    # Test to see if you received a query parameter <KEY> of consequence
+    # If you did, call the Product.find_by_<KEY>(<VALUE>) method to retrieve
+    # products that match the specified <KEY> (e.g. Product.find_by_name for
+    # name or Product.find_by_category for category, etc.)
+    # Else list all
+    if name:
+        app.logger.info("Find by name: %s", name)
+        products = Product.find_by_name(name)
+    elif category:
+        app.logger.info("Find by category: %s", name)
+        # Convert the category string retrieved from the query parameters to the
+        # corresponding enum value from the Category enumeration
+        category_enum = getattr(Category, category.upper())
+        products = Product.find_by_category(category_enum)
+    elif available:
+        app.logger.info("Find by available: %s", available)
+        # Convert the available string retrieved from the query parameters to a
+        # boolean value
+        available_bool = available.lower() in ["true", "yes", "1"]
+        products = Product.find_by_availability(available_bool)
+    else:
+        app.logger.info("Find all")
+        products = Product.all()
+
+    # create a list of serialize() products
+    results = [product.serialize() for product in products]
+
+    # log the number of products being returned in the list
+    app.logger.info("[%s] Products returned", len(results))
+
+    # return the list with a return code of status.HTTP_200_OK
+    return results, status.HTTP_200_OK
+
 
 ######################################################################
 # R E A D   A   P R O D U C T
 ######################################################################
+@app.route("/products/<int:product_id>", methods=["GET"])
+def get_products(product_id):
+    """
+    Retrieve a single Product
 
-#
-# PLACE YOUR CODE HERE TO READ A PRODUCT
-#
+    This endpoint will return a Product based on it's id
+    """
+    app.logger.info("Request to Retrieve a product with id [%s]", product_id)
+
+    # use the Product.find() method to find the product
+    product = Product.find(product_id)
+
+    # abort() with a status.HTTP_404_NOT_FOUND if it cannot be found
+    if not product:
+        abort(
+            status.HTTP_404_NOT_FOUND, f"Product with id '{product_id}' was not found."
+        )
+
+    # return the serialize() version of the product with a return code of status.HTTP_200_OK
+    app.logger.info("Returning product: %s", product.name)
+    return product.serialize(), status.HTTP_200_OK
+
 
 ######################################################################
 # U P D A T E   A   P R O D U C T
 ######################################################################
+@app.route("/products/<int:product_id>", methods=["PUT"])
+def update_products(product_id):
+    """
+    Update an Product
+    This endpoint will update a Product based on the body that is posted
+    """
+    app.logger.info("Request to Update a product with id [%s]", product_id)
+    check_content_type("application/json")
 
-#
-# PLACE YOUR CODE TO UPDATE A PRODUCT HERE
-#
+    # use the Product.find() method to retrieve the product by the product_id
+    product = Product.find(product_id)
+
+    # abort() with a status.HTTP_404_NOT_FOUND if it cannot be found
+    if not product:
+        abort(
+            status.HTTP_404_NOT_FOUND, f"Product with id '{product_id}' was not found."
+        )
+
+    # call the deserialize() method on the product passing in request.get_json()
+    product.deserialize(request.get_json())
+    # call product.update() to update the product with the new data
+    product.id = product_id
+    product.update()
+
+    # return the serialize() version of the product with a return code of status.HTTP_200_OK
+    return product.serialize(), status.HTTP_200_OK
+
 
 ######################################################################
 # D E L E T E   A   P R O D U C T
 ######################################################################
+@app.route("/products/<int:product_id>", methods=["DELETE"])
+def delete_products(product_id):
+    """
+    Delete a Product
 
+    This endpoint will delete a Product based the id specified in the path
+    """
+    app.logger.info("Request to Delete a product with id [%s]", product_id)
 
-#
-# PLACE YOUR CODE TO DELETE A PRODUCT HERE
-#
+    # use the Product.find() method to retrieve the product by the product_id
+    product = Product.find(product_id)
+
+    # if found, call the delete() method on the product
+    if product:
+        product.delete()
+
+    # return and empty body ("") with a return code of status.HTTP_204_NO_CONTENT
+    return "", status.HTTP_204_NO_CONTENT
